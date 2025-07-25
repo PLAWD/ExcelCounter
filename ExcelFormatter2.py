@@ -344,7 +344,7 @@ def create_or_update_summary_list(summary_path, region, date_counts, all_dates, 
     # Save the file
     wb.save(summary_path)
 
-def process_excels(folder, region, summary_list_path, log_callback=None):
+def process_excels(folder, region, summary_list_path, log_callback=None, export_folder=None):
     """Main processing function"""
     # First, scan all files to get unique dates
     if log_callback:
@@ -374,7 +374,7 @@ def process_excels(folder, region, summary_list_path, log_callback=None):
     
     # Determine summary file path
     if not summary_list_path or not os.path.exists(summary_list_path):
-        summary_path = os.path.join(folder, 'summary_list.xlsx')
+        summary_path = os.path.join(export_folder if export_folder else folder, 'summary_list.xlsx')
         if log_callback:
             log_callback(f"Will create new summary file at: {summary_path}")
     else:
@@ -471,29 +471,6 @@ def process_excels(folder, region, summary_list_path, log_callback=None):
             if log_callback:
                 log_callback(f"ERROR updating summary list: {e}")
     
-    # Write results to txt file
-    results_path = os.path.join(folder, 'excel_counts.txt')
-    try:
-        with open(results_path, 'w') as f:
-            f.write(f"Excel Processing Results for {region}\n")
-            f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 50 + "\n\n")
-            
-            for line in results:
-                f.write(line + '\n')
-            
-            f.write(f"\nTOTAL COUNT FOR {region}: {total_count}\n\n")
-            f.write("BREAKDOWN BY DATE:\n")
-            for dte in sorted(region_date_counts.keys()):
-                if isinstance(dte, date):
-                    f.write(f"  {format_date_header(dte)}: {region_date_counts[dte]}\n")
-        
-        if log_callback:
-            log_callback(f"Results saved to: {results_path}")
-    except Exception as e:
-        if log_callback:
-            log_callback(f"ERROR saving results file: {e}")
-    
     # Create merged file if template exists
     template_path = os.path.join(folder, 'Template.xlsx')
     if merged_df_list and os.path.exists(template_path):
@@ -534,10 +511,11 @@ def start_processing(selected_folder, region, summary_list_path, log_widget):
         log_widget.see(tk.END)
         log_widget.config(state='disabled')
         log_widget.update_idletasks()
-    
+    # Pass export folder to processing
+    export_folder = export_folder_var.get() if 'export_folder_var' in locals() else selected_folder
     threading.Thread(
         target=process_excels, 
-        args=(selected_folder, region, summary_list_path, log_callback), 
+        args=(selected_folder, region, summary_list_path, log_callback, export_folder), 
         daemon=True
     ).start()
 
@@ -575,9 +553,11 @@ def run_ui():
     region_dropdown.config(width=15)
     region_dropdown.pack(pady=5)
 
-    # Summary list selection
+    # Summary list selection and export folder selection
     summary_list_path_var = tk.StringVar()
     summary_list_path_var.set("")
+    export_folder_var = tk.StringVar()
+    export_folder_var.set(os.path.dirname(os.path.abspath(__file__)))
 
     def select_summary_list():
         file_selected = filedialog.askopenfilename(
@@ -587,14 +567,20 @@ def run_ui():
         if file_selected:
             summary_list_path_var.set(file_selected)
 
+    def select_export_folder():
+        folder_selected = filedialog.askdirectory(title="Select folder to export summary_list.xlsx")
+        if folder_selected:
+            export_folder_var.set(folder_selected)
+
     tk.Label(root, text="Summary List (optional - will create if not selected):", font=('Arial', 10, 'bold')).pack(pady=(10,5))
     summary_frame = tk.Frame(root)
     summary_frame.pack(pady=5)
     tk.Button(summary_frame, text="Select summary_list.xlsx", command=select_summary_list).pack(side=tk.LEFT)
     summary_entry = tk.Entry(summary_frame, textvariable=summary_list_path_var, width=50, state='readonly')
     summary_entry.pack(side=tk.LEFT, padx=5)
-
-    # Clear summary selection
+    tk.Button(summary_frame, text="Select Export Folder", command=select_export_folder).pack(side=tk.LEFT, padx=5)
+    export_entry = tk.Entry(summary_frame, textvariable=export_folder_var, width=40, state='readonly')
+    export_entry.pack(side=tk.LEFT, padx=5)
     def clear_summary():
         summary_list_path_var.set("")
     tk.Button(summary_frame, text="Clear", command=clear_summary).pack(side=tk.LEFT, padx=5)
